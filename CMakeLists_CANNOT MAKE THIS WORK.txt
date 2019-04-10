@@ -1,0 +1,47 @@
+cmake_minimum_required(VERSION 3.14)
+
+project (writeActiveMQ)
+
+add_definitions(/DMATLAB_MEX_FILE) #define matlab macros
+add_definitions(/DMX_COMPAT_32)
+
+find_package(Matlab REQUIRED SIMULINK MX_LIBRARY MEX_COMPILER)
+
+# additional components
+# MEX_COMPILER
+# MCC_COMPILER
+
+
+include_directories(
+  ${MATLAB_INCLUDE_DIR}
+  C:/Users/Ulysses/Dropbox/+SH_Code/simulinkActiveMQ/activemq-cpp-library-3.9.5
+  C:/Users/Ulysses/Dropbox/+SH_Code/simulinkActiveMQ/activemq-cpp-library-3.9.5/src/main/
+  C:/Users/Ulysses/Dropbox/+SH_Code/simulinkActiveMQ/apr-1.6.5
+  C:/Users/Ulysses/Dropbox/+SH_Code/simulinkActiveMQ/apr-1.6.5/include
+)
+
+
+set (
+  PROJECT_LINK_LIBS
+  libactivemq-cpp.lib
+  libapr-1.lib
+  Ws2_32.lib
+)
+
+#set_target_properties(Mex PROPERTIES COMPILE_FLAGS "-fvisibility=default")
+#target_compile_options(${${prefix}_NAME} PRIVATE "-fvisibility=default")
+
+link_directories(
+   C:/Users/Ulysses/Dropbox/+SH_Code/simulinkActiveMQ/activemq-cpp-library-3.9.5/vs2010-build/x64/Release
+   C:/Users/Ulysses/Dropbox/+SH_Code/simulinkActiveMQ/apr-1.6.5/Release
+)
+
+
+
+matlab_add_mex(
+  NAME writeActiveMQ
+#  SRC writeActiveMQ.cpp
+#  SRC mexAdd.cpp
+  SRC sfun_counter_cpp.cpp
+  LINK_TO ${Matlab_MEX_LIBRARY} ${MATLAB_LIBRARIES} ${PROJECT_LINK_LIBS} R2018a
+)
