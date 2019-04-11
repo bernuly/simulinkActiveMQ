@@ -319,7 +319,7 @@ namespace util {
                     this->lastPosition = index;
 
                     return result;
-                } catch (decaf::lang::exceptions::IndexOutOfBoundsException& e) {
+                } catch (decaf::lang::exceptions::IndexOutOfBoundsException& ) {
                     throw decaf::util::NoSuchElementException(
                         __FILE__, __LINE__, "No previous element exists.");
                 }

@@ -22,7 +22,7 @@ echo %INCL%
 call "%MATLAB_DIR%\bin\mex.bat" %FLAGS%  %LIBDIRS% %LIBS% %INCL% writeActiveMQ.cpp -outdir Release\
 REM call "%MATLAB_DIR%\bin\mex.bat" %FLAGS%  %LIBDIRS% %LIBS% %INCL%  writeActiveMQ.cpp  
 
-
+pause
 
 
 

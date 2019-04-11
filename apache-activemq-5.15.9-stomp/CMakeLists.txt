@@ -14,7 +14,10 @@ set ( PROJECT_LINK_LIBS
   Ws2_32.lib
 )
 
-link_directories( ../activemq-cpp-library-3.9.5/vs2010-build/Win32/Debug )
+link_directories( 
+../activemq-cpp-library-3.9.5/vs2010-build/x64/Release
+../apr-1.6.5/Release
+)
 
 add_executable(stompExListener Listener.cpp)
 target_link_libraries(stompExListener ${PROJECT_LINK_LIBS} )

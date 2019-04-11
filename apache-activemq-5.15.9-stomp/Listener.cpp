@@ -87,7 +87,8 @@ int main(int argc AMQCPP_UNUSED, char* argv[] AMQCPP_UNUSED) {
         long long start = System::currentTimeMillis();
         long long count = 0;
 
-        std::cout << "Waiting for messages..." << std::endl;
+		
+        std::cout << "Waiting for messages for scope: " << destination << std::endl;
         while(true) {
 
             std::auto_ptr<Message> message(consumer->receive());
