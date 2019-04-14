@@ -68,15 +68,22 @@ std::string int_array_to_string(int int_array[], int size_of_array) {
   for (int temp = 0; temp < size_of_array; temp++) {
     oss << (char)int_array[temp];
   }
-  return oss.str();
+    return oss.str();
 }
+
+
+
 
 std::string double_array_to_string(InputRealPtrsType double_array, int size_of_array) {
   std::ostringstream oss("");
+
   for (int temp = 0; temp < size_of_array; temp++) {
     oss << (char)*double_array[temp];
   }
-  return oss.str();
+  std::string str = oss.str();
+  std::size_t found = str.find('\0');
+  str = str.substr(0, found);
+  return str;
 }
 
 
@@ -247,12 +254,17 @@ static void mdlStart(SimStruct *S) {
       producer->send(message.get());
     */
 
-    cerr << "activeMQ connection setup succesful" << endl;
-    mexPrintf("activeMQ connection setup succesful\n");
+ //   cerr << "activeMQ connection setup successful" << endl;
+    mexPrintf("activeMQ connection setup successful\n");
   }
   catch (cms::CMSException & e) {
     cerr << "activeMQ connection setup FAIL:" << e.getMessage() << endl;
     mexPrintf("activeMQ connection setup FAIL: %s\n", e.getMessage().c_str());
+    std::string strError;
+    strError = "activeMQ connection setup FAIL: " + e.getMessage();
+    ssSetErrorStatus(S,strError.c_str());
+      // >= 2019a ssSetLocalErrorStatus(S,strError.c_str());
+
   }
 
 
@@ -278,6 +290,8 @@ static void mdlUpdate(SimStruct *S, int_T tid) {
   std::string strMsg = double_array_to_string(uPtrs, 2048);
   //  mexPrintf("Sending: #%s#\n", strMsg.c_str());
 
+  if(strMsg.length()>0){
+  
   string *strScope = (std::string*) ssGetPWork(S)[3];
 
   cms::Session *session = (cms::Session*)ssGetPWork(S)[1];
@@ -291,13 +305,30 @@ static void mdlUpdate(SimStruct *S, int_T tid) {
     ss << setfill('0');
     ss << setw(3) << iSecs;
     ss << setw(5) << rand();
-    string strID = "bml_" + ss.str();
+    string strID = /*"bml_" + */ ss.str();
     string *strActor = (std::string*) ssGetPWork(S)[4];
+
+/*
+message formats:
+for SmartBody:
+FuseCharacter ALL bml_06700397 <face type="FACS" au="4" amount="-0.42"/><face type="FACS" au="5" amount="-0.42"/><face type="FACS" au="7" amount="-0.38"/><face type="FACS" au="23" amount="-0.42"/>
+
+for CHL Unity:
+<xml><bml id="3771259" characterId="FuseCharacter"><faceFacs au="9" id="4291259" side="BOTH" start="0" end="3" amount="0.2"/><faceFacs au="27" id="4291259" side="BOTH" start="0"  end="3" amount="0.1"/></bml></xml>
+<xml><bml id="bml_41829102" characterId="FuseCharacter"><face type="FACS" au="4" amount="-0.49"/><face type="FACS" au="5" amount="-0.49"/><face type="FACS" au="7" amount="-0.44"/><face type="FACS" au="23" amount="-0.49"/>
+*/
+
+#ifdef BML_SMARTBODY
     string strBML = *strActor + " ALL " + strID + " " + strMsg;
+#else
+    string strBML = "<xml><bml id=\"" + strID + "\" characterId=\"" + *strActor + "\">" + strMsg + "</bml></xml>";
+#endif
+
     std::auto_ptr<TextMessage> message(session->createTextMessage(strBML));
     message->setStringProperty("ELVISH_SCOPE", *strScope);
     message->setStringProperty("MESSAGE_PREFIX", prefix);
     producer->send(message.get()); /* .get() -> get pointer to auto_ptr object */
+
 
   } else {
     std::auto_ptr<TextMessage> message(session->createTextMessage(strMsg));
@@ -305,12 +336,10 @@ static void mdlUpdate(SimStruct *S, int_T tid) {
     message->setStringProperty("MESSAGE_PREFIX", prefix);
     producer->send(message.get()); /* .get() -> get pointer to auto_ptr object */
   }
-
-
-
-
+ 
   Sleep(1000 / 25);
-
+  }
+  
 }
 
 /* Function: mdlTerminate =====================================================
@@ -320,14 +349,36 @@ static void mdlUpdate(SimStruct *S, int_T tid) {
  *    allocated in mdlStart, this is the place to free it.
  */
 static void mdlTerminate(SimStruct *S) {
-  try {
-    activemq::library::ActiveMQCPP::initializeLibrary();
+	cerr << "trying to shutdown" << endl;
+    mexPrintf("trying to shutdown\n");
+	Sleep(1000);
+
+	try {
+	cms::Session * session = (cms::Session *)ssGetPWork(S)[1];
+	cerr << "close session" << endl;
+	session->close();
+	cerr << "session closed" << endl;
+		
+		
     cms::Connection * connection = (cms::Connection*)ssGetPWork(S)[0];
-    connection->close();
+	cerr << "close connection" << endl;
+	/* NOT CLOSING CRASHES MATLAB */
+   connection->close();
+   cerr << "connection closed" << endl;
+   
+   cerr << "shutting down library" << endl;
+   activemq::library::ActiveMQCPP::shutdownLibrary();
+   cerr << "library shut down" << endl;
+    //Sleep(100);
+
   }
   catch (cms::CMSException & e) {
-    cerr << "catch (cms::CMSException &e):" << e.getMessage() << endl;
+	cerr << "activeMQ terminate FAIL:" << e.getMessage() << endl;
+	std::string strError;
+	strError = "activeMQ terminate FAIL: " + e.getMessage();
+	ssSetErrorStatus(S, strError.c_str());
   }
+  mexPrintf("activeMQ connection closed successful\n");
 }
 
 /*======================================================*
