@@ -1,10 +1,6 @@
-/*  File    : yarpSendText_sfun.cpp
- *  Abstract:
+/*  File    : writeActiveMQ2.cpp
  *
- *      Example of an C++ S-function which stores an C++ object in
- *      the pointers vector PWork.
- *
- *  Copyright 1990-2013 The MathWorks, Inc.
+ *  Copyright 2019 Ulysses Bernardet CHL
  */
 
 #include <iostream>
@@ -45,7 +41,7 @@ using namespace decaf::lang;
 using namespace std;
 
 #define S_FUNCTION_LEVEL 2
-#define S_FUNCTION_NAME  writeActiveMQ
+#define S_FUNCTION_NAME  writeActiveMQ2
 
 /*
  * Need to include simstruc.h for the definition of the SimStruct and
@@ -53,10 +49,15 @@ using namespace std;
  */
 #include "simstruc.h"
 
+/* FindMatlab defines these as EXPORTS; not sure why...
+   void mexCreateMexFunction() {}
+   void mexDestroyMexFunction() {}
+   void mexFunctionAdapter() {}
+*/
+
 
 static const std::string prefix = "vrSpeak";
-cms::Connection * connectionStatic;
-cms::Session * sessionStatic;
+
 
 std::string int_array_to_string(int int_array[], int size_of_array) {
   std::ostringstream oss("");
@@ -65,6 +66,8 @@ std::string int_array_to_string(int int_array[], int size_of_array) {
   }
   return oss.str();
 }
+
+
 
 
 std::string double_array_to_string(InputRealPtrsType double_array, int size_of_array) {
@@ -107,7 +110,7 @@ static void mdlCheckParameters(SimStruct *S) {
  */
 static void mdlInitializeSizes(SimStruct *S) {
 
-  ssSetNumSFcnParams(S, 4);  /* Number of expected parameters */
+  ssSetNumSFcnParams(S, 3);  /* Number of expected parameters */
 
   // Parameter mismatch will be reported by Simulink
   if (ssGetNumSFcnParams(S) == ssGetSFcnParamsCount(S)) {
@@ -125,10 +128,11 @@ static void mdlInitializeSizes(SimStruct *S) {
   ssSetNumContStates(S, 0);
   ssSetNumDiscStates(S, 0);
 
-  if (!ssSetNumInputPorts(S, 1)) return;
+  if (!ssSetNumInputPorts(S, 2)) return;
   ssSetInputPortWidth(S, 0, DYNAMICALLY_SIZED);
+  ssSetInputPortWidth(S, 1, DYNAMICALLY_SIZED);
   ssSetInputPortDirectFeedThrough(S, 0, 1);
-
+  ssSetInputPortDirectFeedThrough(S, 0, 2);
 
   if (!ssSetNumOutputPorts(S, 0)) return;
   //not needed?    ssSetOutputPortWidth(S, 0, 1);
@@ -137,7 +141,7 @@ static void mdlInitializeSizes(SimStruct *S) {
   //--  ssSetNumRWork(S, 0);
   //--  ssSetNumIWork(S, 0);
 
-  ssSetNumPWork(S, 4); // reserve elements in the pointer vector ssGetPWork
+  ssSetNumPWork(S, 5); // reserve elements in the pointer vector ssGetPWork
   ssSetNumModes(S, 0); // to store a C++ object
   ssSetNumNonsampledZCs(S, 0);
 
@@ -178,13 +182,8 @@ static void mdlInitializeSampleTimes(SimStruct *S) {
 #define MDL_START
 static void mdlStart(SimStruct *S) {
 
-  ssGetPWork(S)[2] = (void *) new std::string; /* we store the scope in this persistend variable so we don't have to query it at very update cycle*/
-  std::string *strScope = (std::string *) ssGetPWork(S)[2];
-
-  ssGetPWork(S)[3] = (void *) new std::string; /* we store the actor name in this persistend variable so we don't have to query it at very update cycle*/
-  std::string *strActor = (std::string *) ssGetPWork(S)[3];
-
-  //	static const std::string scope = "DEFAULT_SCOPE"; // UNITY_BML, UNITY_JSON
+  ssGetPWork(S)[4] = (void *) new std::string; /* we store the actor name in this persistend variable so we don't have to query it at very update cycle*/
+  std::string *strActor = (std::string *) ssGetPWork(S)[4];
 
 
   /* definition of the parameters:
@@ -206,18 +205,10 @@ static void mdlStart(SimStruct *S) {
   
   char_T buf03[LENGTH];
   mxGetString(ssGetSFcnParam(S, 2), buf03, LENGTH);
-  strScope->assign(buf03);
-
-  char_T buf04[LENGTH];
-  mxGetString(ssGetSFcnParam(S, 3), buf04, LENGTH);
-  strActor->assign(buf04);
-
-
-  //std::string host = "localhost";
-  //  std::string port = "61616";
+  strActor->assign(buf03);
 
   mexPrintf("Talking to server: %s on port: %s\n", strActiveMQServer.c_str(), port.c_str());
-  mexPrintf("   Scope: %s\n", strScope->c_str());
+
 
   std::string brokerURI = "tcp://" + strActiveMQServer + ":" + port;
 
@@ -226,33 +217,31 @@ static void mdlStart(SimStruct *S) {
 
     activemq::core::ActiveMQConnectionFactory factory;
     factory.setBrokerURI(brokerURI);
+    cms::Connection * connection = factory.createConnection();
+    ssGetPWork(S)[0] = (void *)connection;
+    connection->start();
 
-    if (connectionStatic == NULL) { 
-      cerr << "connectionStatic is NULL" << endl;  
-      connectionStatic = factory.createConnection();
-      connectionStatic->start();
-    }
-    else { 
-      cerr << "connectionStatic not Null" << endl; 
-    }
+    cms::Session * session = connection->createSession();
+    ssGetPWork(S)[1] = (void *)session;
 
-    if (sessionStatic == NULL) { 
-      cerr << "sessionStatic is NULL" << endl;  
-      sessionStatic = connectionStatic->createSession();
-    }
-    else { 
-      cerr << "sessionStatic not Null" << endl; 
-    }
+    Destination * destBML = session->createTopic("UNITY_BML");
+    cms::MessageProducer * producerBML = session->createProducer(destBML);
+    ssGetPWork(S)[2] = (void *)producerBML;
+    producerBML->setDeliveryMode(DeliveryMode::NON_PERSISTENT);
+    
+    Destination * destJSON = session->createTopic("UNITY_JSON");
+    cms::MessageProducer * producerJSON = session->createProducer(destJSON);
+    ssGetPWork(S)[3] = (void *)producerJSON;
+    producerJSON->setDeliveryMode(DeliveryMode::NON_PERSISTENT);
 
 
-    cms::Destination * dest = sessionStatic->createTopic(*strScope);
-    cms::MessageProducer * producer = sessionStatic->createProducer(dest);
+    /*
+      std::auto_ptr<TextMessage> message(session->createTextMessage("Blabla"));
+      message->setStringProperty("MESSAGE_PREFIX", "blabla");
+      producerBML->send(message.get());
+    */
 
-    ssGetPWork(S)[0] = (void *)dest;
-    ssGetPWork(S)[1] = (void *)producer;
-
-    producer->setDeliveryMode(DeliveryMode::NON_PERSISTENT);
-
+    //   cerr << "activeMQ connection setup successful" << endl;
     mexPrintf("activeMQ connection setup successful\n");
   }
   catch (cms::CMSException & e) {
@@ -285,57 +274,52 @@ static void mdlUpdate(SimStruct *S, int_T tid) {
   UNUSED_ARG(tid); /* not used in single tasking mode */
 
   InputRealPtrsType  uPtrs = ssGetInputPortRealSignalPtrs(S, 0);
-  std::string strMsg = double_array_to_string(uPtrs, 2048);
-  //  mexPrintf("Sending: #%s#\n", strMsg.c_str());
+  std::string strMsgBML = double_array_to_string(uPtrs, 2048);
 
-  if(strMsg.length()>0){
+  uPtrs = ssGetInputPortRealSignalPtrs(S, 1);
+  std::string strMsgJSON = double_array_to_string(uPtrs, 2048);
+
+  cms::Session *session = (cms::Session*)ssGetPWork(S)[1];
   
-    string *strScope = (std::string*) ssGetPWork(S)[2];
-
-    cms::MessageProducer * producer = (cms::MessageProducer*)ssGetPWork(S)[1];
+  if(strMsgBML.length()>0){
+    cms::MessageProducer * producerBML = (cms::MessageProducer*)ssGetPWork(S)[2];
   
-    if(!strScope->compare("UNITY_BML")){
-      time_t tNow;
-      tNow = time(NULL);
-      int iSecs = (int)(tNow - floor((double)(tNow / 1000.)) * 1000); //get the last 1000 seconds
-      stringstream ss;
-      ss << setfill('0');
-      ss << setw(3) << iSecs;
-      ss << setw(5) << rand();
-      string strID = /*"bml_" + */ ss.str();
-      string *strActor = (std::string*) ssGetPWork(S)[3];
 
-      /*
-        message formats:
-        for SmartBody:
-        FuseCharacter ALL bml_06700397 <face type="FACS" au="4" amount="-0.42"/><face type="FACS" au="5" amount="-0.42"/><face type="FACS" au="7" amount="-0.38"/><face type="FACS" au="23" amount="-0.42"/>
-
-        for CHL Unity:
-        <xml><bml id="3771259" characterId="FuseCharacter"><faceFacs au="9" id="4291259" side="BOTH" start="0" end="3" amount="0.2"/><faceFacs au="27" id="4291259" side="BOTH" start="0"  end="3" amount="0.1"/></bml></xml>
-        <xml><bml id="bml_41829102" characterId="FuseCharacter"><face type="FACS" au="4" amount="-0.49"/><face type="FACS" au="5" amount="-0.49"/><face type="FACS" au="7" amount="-0.44"/><face type="FACS" au="23" amount="-0.49"/>
-      */
+    time_t tNow;
+    tNow = time(NULL);
+    int iSecs = (int)(tNow - floor((double)(tNow / 1000.)) * 1000); //get the last 1000 seconds
+    stringstream ss;
+    ss << setfill('0');
+    ss << setw(3) << iSecs;
+    ss << setw(5) << rand();
+    string strID = /*"bml_" + */ ss.str();
+    string *strActor = (std::string*) ssGetPWork(S)[4];
 
 #ifdef BML_SMARTBODY
-      string strBML = *strActor + " ALL " + strID + " " + strMsg;
+    string strBML = *strActor + " ALL " + strID + " " + strMsgBML;
 #else
-      string strBML = "<xml><bml id=\"" + strID + "\" characterId=\"" + *strActor + "\">" + strMsg + "</bml></xml>";
+    string strBML = "<xml><bml id=\"" + strID + "\" characterId=\"" + *strActor + "\">" + strMsgBML + "</bml></xml>";
 #endif
 
-      std::auto_ptr<TextMessage> message(sessionStatic->createTextMessage(strBML));
-      message->setStringProperty("MESSAGE_PREFIX", prefix);
-      producer->send(message.get()); /* .get() -> get pointer to auto_ptr object */
+    std::auto_ptr<TextMessage> message(session->createTextMessage(strBML));
+    message->setStringProperty("MESSAGE_PREFIX", prefix);
+    producerBML->send(message.get()); /* .get() -> get pointer to auto_ptr object */
 
 
-    } else {
-      std::auto_ptr<TextMessage> message(sessionStatic->createTextMessage(strMsg));
-      message->setStringProperty("MESSAGE_PREFIX", prefix);
-      producer->send(message.get()); /* .get() -> get pointer to auto_ptr object */
-    }
- 
-    Sleep(1000 / 100);
   }
-  
+
+  if(strMsgJSON.length()>0){
+    cms::MessageProducer * producerJSON = (cms::MessageProducer*)ssGetPWork(S)[3];
+
+    std::auto_ptr<TextMessage> message(session->createTextMessage(strMsgJSON));
+    message->setStringProperty("MESSAGE_PREFIX", prefix);
+    producerJSON->send(message.get()); /* .get() -> get pointer to auto_ptr object */
+  }
+    
+ 
+  Sleep(1000 / 100);
 }
+  
 
 /* Function: mdlTerminate =====================================================
  * Abstract:
@@ -346,49 +330,11 @@ static void mdlUpdate(SimStruct *S, int_T tid) {
 static void mdlTerminate(SimStruct *S) {
   cerr << "trying to shutdown" << endl;
   mexPrintf("trying to shutdown\n");
-  Sleep(1000);
+  //--  Sleep(1000);
 
-  cerr << "closing producer" << endl;
-  cms::MessageProducer * producer = (cms::MessageProducer*)ssGetPWork(S)[1];
-  producer->close();
-  cerr << "producer closed" << endl;
-  
   try {
-    if(sessionStatic!=NULL){
-      cerr << "closing session" << endl;
-      sessionStatic->close();
-      cerr << "session closed" << endl;
-      cerr << __FILE__ << ":" << __LINE__ << endl;
-      delete sessionStatic;
-      cerr << __FILE__ << ":" << __LINE__ << endl;
-      sessionStatic = NULL;
-    }
-
-    if(connectionStatic!=NULL){
-      cerr << "closing connection" << endl;
-      /* NOT CLOSING CRASHES MATLAB */
-      connectionStatic->close();
-      cerr << "connection closed" << endl;
-      cerr << __FILE__ << ":" << __LINE__ << endl;
-      //      delete connectionStatic;
-      cerr << __FILE__ << ":" << __LINE__ << endl;
-      connectionStatic = NULL;
-    }
-
-    
-
-    /*
-    cms::Destination * dest = (cms::Destination*)ssGetPWork(S)[0];
-    cerr << __FILE__ << ":" << __LINE__ << endl;
-    delete dest;
-    */
-    /*
-    cms::MessageProducer * producer = (cms::MessageProducer*)ssGetPWork(S)[1];
-    cerr << __FILE__ << ":" << __LINE__ << endl;
-    delete producer;
-    */
-
-    
+    cms::Session * session = (cms::Session *)ssGetPWork(S)[1];
+    session->close();
   }
   catch (cms::CMSException & e) {
     cerr << "activeMQ terminate FAIL:" << e.getMessage() << endl;

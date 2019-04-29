@@ -6,7 +6,7 @@ function blkStruct = slblocks
 		Browser.Library = 'activeMQ';
 		% 'mylib' is the name of the library
 
-		Browser.Name = 'activeMQ';
+		Browser.Name = 'CHL activeMQ';
 		% 'My Library' is the library name that appears in the Library Browser
 
 		blkStruct.Browser = Browser;
