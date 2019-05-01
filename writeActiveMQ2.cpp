@@ -64,7 +64,10 @@ std::string int_array_to_string(int int_array[], int size_of_array) {
   for (int temp = 0; temp < size_of_array; temp++) {
     oss << (char)int_array[temp];
   }
-  return oss.str();
+  std::string str = oss.str();
+  std::size_t found = str.find('\0');
+  str = str.substr(0, found);
+  return str;
 }
 
 
@@ -72,7 +75,6 @@ std::string int_array_to_string(int int_array[], int size_of_array) {
 
 std::string double_array_to_string(InputRealPtrsType double_array, int size_of_array) {
   std::ostringstream oss("");
-
   for (int temp = 0; temp < size_of_array; temp++) {
     oss << (char)*double_array[temp];
   }
